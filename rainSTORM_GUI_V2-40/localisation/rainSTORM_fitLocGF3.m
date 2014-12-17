@@ -8,12 +8,10 @@ persistent Nfails
 
 % Determine if main localisation algorith will use old method (subtract
 % minimum of ROI) of the new method (subtract average of NON-ROI).
-% 0 = old method (Min(ROI)), 1 = new method (Mean(non-ROI)), 2 = advanced
+% 0 = old method (Min(ROI)), 1 = new method (Mean(non-ROI))
 % fitting (fitting DC term to Gaussian)
-FlagState= 2;
+FlagState= 1;
 
-%Initial guess for D
-% D = 0; % Actually use guess for each roi...
 
 % Fit [x0,C,sigX] to make f(x)=C*exp( -(x-x0)^2/(2*sigX^2) ) 
 % Work on rows then cols. Reject fits with far-out x0, sigX, or residual.
@@ -24,6 +22,33 @@ SupResParams = [];
 index = 1;
 Nfails = 0; % Reset the number of rejected fits for this new frame
 
+% New method 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+if FlagState == 1;
+  % ResBackground =(sum(sum(myFrame))-sum(sum(myROI)))/((size(myFrame,1)^2)-(size(myROI,1)^2)); % Background is average count outside ROI.
+   InitialBackground = mean (mean(double(myFrame)));
+   stdev = std(double(myFrame(:)));
+   area = (size(myFrame,1))^2;
+   SumBackground = 0; 
+   
+   for rowNum = 1: size(myFrame,1)
+       for colNum = 1 : size(myFrame, 1)
+           if myFrame(rowNum, colNum) < 3*stdev+InitialBackground 
+               SumBackground = SumBackground + double(myFrame(rowNum, colNum));
+           else 
+               area = area - 1;
+           end;
+       end;
+   end;
+   
+   ResBackground = SumBackground / area;
+   ResBackground 
+   % 'new method'
+end            
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 for lpPx = 1:size(myPixels,1); % For local maxima in descending order
 myRow = myPixels(lpPx,1);
 myCol = myPixels(lpPx,2);
@@ -33,20 +58,12 @@ myROI = myFrame(myRow-rad:myRow+rad,myCol-rad:myCol+rad);
 % "Old method"
 
 if FlagState == 0 ;
-    myROI = myROI - min(myROI(:));  % square region to fit. Subtract minimum.
+    ResBackground = min(myROI(:));  % square region to fit. Subtract minimum.
    % 'old method'
 end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% New method 
-%This part only works with one molecule!
-if FlagState == 1;
-   ResBackground =(sum(sum(myFrame))-sum(sum(myROI)))/((size(myFrame,1)^2)-(size(myROI,1)^2)); % Background is average count outside ROI.
-   myROI = myROI - ResBackground;
-   % 'new method'
-end            
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
+myROI = myROI - ResBackground;
 flagRowFits = false;   % Begin by noting the centre-position is not fitted
 flagColFits = false;
 
@@ -59,31 +76,38 @@ yCols = sum(myROI,1)'; % Sum all rows (dim=1) in each column.
 x0 = initX0;
 sigX = initSig;
 C  = yRows(rad+1); % Guess height of f(x). Centre value is a good guess.
-D = double(min(yRows));
-  fofX = C*exp(-(xx-x0).^2/(2*sigX^2))+ D ; % Initial guess of f(x)
+  fofX = C*exp(-(xx-x0).^2/(2*sigX^2)); %+ D ; % Initial guess of f(x)
   Beta = yRows - fofX; % Change needed in f(x)
   for lpLSF = 1:maxIts
-  if FlagState==2;
-      d = ones  (size (xx,1),1); 
-      A = [fofX/C,fofX.*(xx-x0)/sigX^2,fofX.*(xx-x0).^2/sigX^3,d]; % Jacobian
-  else
-      A = [fofX/C,fofX.*(xx-x0)/sigX^2,fofX.*(xx-x0).^2/sigX^3]; % Jacobian
-  end;
+  %if FlagState==2;
+      %d = ones  (size (xx,1),1); 
+      %A = [fofX/C,fofX.*(xx-x0)/sigX^2,fofX.*(xx-x0).^2/sigX^3,d]; % Jacobian
+  %else
+   A = [fofX/C,fofX.*(xx-x0)/sigX^2,fofX.*(xx-x0).^2/sigX^3]; % Jacobian
+  %end;
   b = A'*Beta;
   a = A'*A;
   dL= a\b;
-  C = C+dL(1);
+  C = C + dL(1);
   x0 = x0 + dL(2);
   sigX = sigX + dL(3);
-   if FlagState==2;
-      D = D + dL(4)*0.01; % Include damping term
-      fofX = C*exp(-(xx-x0).^2/(2*sigX^2)) + D; 
-  else
+   %if FlagState==2;
+     % D = D + 0.01*dL(4); % Include damping term
+    %  fofX = C*exp(-(xx-x0).^2/(2*sigX^2)) + D; 
+  %else
      fofX = C*exp(-(xx-x0).^2/(2*sigX^2));
-  end;
+  %end;
   Beta = yRows - fofX;
-    if(abs(x0)>allowX || (sigX < allowSig(1)) || (sigX > allowSig(2)) )
-      break; % Stop iterating if solution drifts too far
+  
+ % store iteration variables
+ Dfactorx(lpLSF,1,lpPx) = C;
+ Dfactorx(lpLSF,2,lpPx) = x0;
+ Dfactorx(lpLSF,3,lpPx) = sigX;
+ Dfactorx(lpLSF,4,lpPx) = ResBackground;
+ Dfactorx(lpLSF,5,lpPx) = sum(Beta.^2); 
+
+    if(abs(x0)>allowX || (sigX < -allowSig(1)) || (sigX > allowSig(2)) )
+     break; % Stop iterating if solution drifts too far
     end
   end
   % Judge the fit. Accept if residue is a small proportion of |y^2|, etc.
@@ -98,36 +122,42 @@ D = double(min(yRows));
   y0 = initX0;
   sigY = sigX;% Keep sigX from row-fit. It should match the column-fit.
   C = yCols(rad+1);
-  if FlagState==2;
-    fofX = C*exp(-(yy-y0).^2/(2*sigY^2)) + D; % Initial guess of f(x)
-    d = ones  (size (xx,1),1);
-  else 
+ % if FlagState==2;
+ %   fofX = C*exp(-(yy-y0).^2/(2*sigY^2)) + D; % Initial guess of f(x)
+ %   d = ones  (size (xx,1),1);
+ % else 
     fofX = C*exp(-(yy-y0).^2/(2*sigY^2));
-  end
+ % end
   Beta = yCols - fofX; % Change needed in f(x)
   
   for lpLSF = 1:maxIts
       
- if FlagState==2;
-    A = [fofX/C,fofX.*(yy-y0)/sigY^2,fofX.*(yy-y0).^2/sigY^3,d]; % Jacobian
- else
+% if FlagState==2;
+%    A = [fofX/C,fofX.*(yy-y0)/sigY^2,fofX.*(yy-y0).^2/sigY^3,d]; % Jacobian
+% else
      A = [fofX/C,fofX.*(yy-y0)/sigY^2,fofX.*(yy-y0).^2/sigY^3];
- end
+% end
   b = A'*Beta;
   a = (A'*A);
   dL= a\b;
   C = C+dL(1);
   y0 = y0 + dL(2);
-  sigY = sigY + dL(3);
-  if FlagState==2;
-    D = D + dL(4)*0.01;
-    fofX = C*exp(-(yy-y0).^2/(2*sigY^2))+ D; 
-  else 
+   sigY = sigY + dL(3);
+ % if FlagState==2;
+ %   D = D + dL(4)*0.001;
+ %   fofX = C*exp(-(yy-y0).^2/(2*sigY^2))+ D; 
+ % else 
     fofX = C*exp(-(yy-y0).^2/(2*sigY^2));
-  end
-  
+ % end
   Beta = yCols - fofX;
-   if(abs(y0)>allowX || (sigY < allowSig(1)) || (sigY > allowSig(2)) )
+ % Damping factor optimisation, store iteration variables
+  Dfactory(lpLSF,1,lpPx) = C;
+  Dfactory(lpLSF,2,lpPx) = y0;
+  Dfactory(lpLSF,3,lpPx) = sigY;
+  Dfactory(lpLSF,4,lpPx) = ResBackground;
+  Dfactory(lpLSF,5,lpPx) = sum(Beta.^2); 
+ 
+  if(abs(y0)>allowX || (sigY < allowSig(1)) || (sigY > allowSig(2)) )
      break; % Stop iterating if solution drifts too far
    end
   end
@@ -162,11 +192,11 @@ D = double(min(yRows));
   SupResParams(index).res_Row = residueRows;
   SupResParams(index).res_Col = residueCols;
   SupResParams(index).Sum_signal = sum(yCols); % Sum of signal (counts) for this fit
- if FlagState==2
-     SupResParams(index).Sum_signal = sum(yCols)-7*D; % Sum of signal (counts) for this fit
- else
+% if FlagState==2
+%     SupResParams(index).Sum_signal = sum(yCols)-7*D; % Sum of signal (counts) for this fit
+% else
     SupResParams(index).Sum_signal = sum(yCols); % Sum of signal (counts) for this fit
-  end  
+%  end  
   % Print D
   %D
   
