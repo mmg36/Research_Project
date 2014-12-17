@@ -25,13 +25,13 @@ function params=rainSTORM_main(params)
     
     SupResParams = [];
 %     SupResParams = params.localization.results.SupResParams;
-    
+   
 if (parCompTool)
 %     SupResPosits = [];
 %      SupResParams = [];
 %     SupResNumber = 0;
     
-    parfor lpIm=1:numberOfImages;
+    for lpIm=1:numberOfImages;
         SRP = rainSTORM_main_loop(lpIm, image.getFrame(lpIm),initX0, initSig, rad, tol, Thresh, maxIts, alg, allowSig, allowX);
         %[myFits, myParams] = rainSTORM_main_loop(lpIm, image.getFrame(lpIm),initX0, initSig, rad, tol, Thresh, maxIts, alg, allowSig, allowX);
         % Add frame number to myParams.

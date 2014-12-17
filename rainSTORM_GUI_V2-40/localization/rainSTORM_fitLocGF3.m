@@ -8,7 +8,12 @@ persistent Nfails
 
 % Determine if main localisation algorith will use old method (subtract
 % minimum of ROI) of the new method (subtract average of NON-ROI).
-FlagFitAverage= 0;
+% 0 = old method (Min(ROI)), 1 = new method (Mean(non-ROI)), 2 = advanced
+% fitting (fitting DC term to Gaussian)
+FlagState= 2;
+
+%Initial guess for D
+% D = 0; % Actually use guess for each roi...
 
 % Fit [x0,C,sigX] to make f(x)=C*exp( -(x-x0)^2/(2*sigX^2) ) 
 % Work on rows then cols. Reject fits with far-out x0, sigX, or residual.
@@ -27,14 +32,14 @@ myROI = myFrame(myRow-rad:myRow+rad,myCol-rad:myCol+rad);
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % "Old method"
 
-if FlagFitAverage == 0 ;
+if FlagState == 0 ;
     myROI = myROI - min(myROI(:));  % square region to fit. Subtract minimum.
    % 'old method'
 end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % New method 
 %This part only works with one molecule!
-if FlagFitAverage == 1;
+if FlagState == 1;
    ResBackground =(sum(sum(myFrame))-sum(sum(myROI)))/((size(myFrame,1)^2)-(size(myROI,1)^2)); % Background is average count outside ROI.
    myROI = myROI - ResBackground;
    % 'new method'
@@ -54,17 +59,28 @@ yCols = sum(myROI,1)'; % Sum all rows (dim=1) in each column.
 x0 = initX0;
 sigX = initSig;
 C  = yRows(rad+1); % Guess height of f(x). Centre value is a good guess.
-  fofX = C*exp(-(xx-x0).^2/(2*sigX^2)); % Initial guess of f(x)
+D = double(min(yRows));
+  fofX = C*exp(-(xx-x0).^2/(2*sigX^2))+ D ; % Initial guess of f(x)
   Beta = yRows - fofX; % Change needed in f(x)
   for lpLSF = 1:maxIts
-  A = [fofX/C,fofX.*(xx-x0)/sigX^2,fofX.*(xx-x0).^2/sigX^3]; % Jacobian
+  if FlagState==2;
+      d = ones  (size (xx,1),1); 
+      A = [fofX/C,fofX.*(xx-x0)/sigX^2,fofX.*(xx-x0).^2/sigX^3,d]; % Jacobian
+  else
+      A = [fofX/C,fofX.*(xx-x0)/sigX^2,fofX.*(xx-x0).^2/sigX^3]; % Jacobian
+  end;
   b = A'*Beta;
   a = A'*A;
   dL= a\b;
   C = C+dL(1);
   x0 = x0 + dL(2);
   sigX = sigX + dL(3);
-  fofX = C*exp(-(xx-x0).^2/(2*sigX^2)); 
+   if FlagState==2;
+      D = D + dL(4)*0.01; % Include damping term
+      fofX = C*exp(-(xx-x0).^2/(2*sigX^2)) + D; 
+  else
+     fofX = C*exp(-(xx-x0).^2/(2*sigX^2));
+  end;
   Beta = yRows - fofX;
     if(abs(x0)>allowX || (sigX < allowSig(1)) || (sigX > allowSig(2)) )
       break; % Stop iterating if solution drifts too far
@@ -82,17 +98,34 @@ C  = yRows(rad+1); % Guess height of f(x). Centre value is a good guess.
   y0 = initX0;
   sigY = sigX;% Keep sigX from row-fit. It should match the column-fit.
   C = yCols(rad+1);
-  fofX = C*exp(-(yy-y0).^2/(2*sigY^2)); % Initial guess of f(x)
+  if FlagState==2;
+    fofX = C*exp(-(yy-y0).^2/(2*sigY^2)) + D; % Initial guess of f(x)
+    d = ones  (size (xx,1),1);
+  else 
+    fofX = C*exp(-(yy-y0).^2/(2*sigY^2));
+  end
   Beta = yCols - fofX; % Change needed in f(x)
+  
   for lpLSF = 1:maxIts
-  A = [fofX/C,fofX.*(yy-y0)/sigY^2,fofX.*(yy-y0).^2/sigY^3]; % Jacobian
+      
+ if FlagState==2;
+    A = [fofX/C,fofX.*(yy-y0)/sigY^2,fofX.*(yy-y0).^2/sigY^3,d]; % Jacobian
+ else
+     A = [fofX/C,fofX.*(yy-y0)/sigY^2,fofX.*(yy-y0).^2/sigY^3];
+ end
   b = A'*Beta;
   a = (A'*A);
   dL= a\b;
   C = C+dL(1);
   y0 = y0 + dL(2);
   sigY = sigY + dL(3);
-  fofX = C*exp(-(yy-y0).^2/(2*sigY^2)); 
+  if FlagState==2;
+    D = D + dL(4)*0.01;
+    fofX = C*exp(-(yy-y0).^2/(2*sigY^2))+ D; 
+  else 
+    fofX = C*exp(-(yy-y0).^2/(2*sigY^2));
+  end
+  
   Beta = yCols - fofX;
    if(abs(y0)>allowX || (sigY < allowSig(1)) || (sigY > allowSig(2)) )
      break; % Stop iterating if solution drifts too far
@@ -121,6 +154,7 @@ C  = yRows(rad+1); % Guess height of f(x). Centre value is a good guess.
   SupResParams(index).y = fitColPos;
   SupResParams(index).z = 0;
   SupResParams(index).I = myPixels(lpPx,3); % Averaged magnitude of this signal
+  SupResParams(index).I = myPixels(lpPx,3); % Averaged magnitude of this signal    
   SupResParams(index).sig_x = sigX;  % X-width (sigma, rows, fitted) of this Gaussian
   SupResParams(index).sig_y = sigY;  % Y-width (sigma, cols, fitted) of this Gaussian
   SupResParams(index).avg_brigthness = bkgdSig; % Background for each ROI
@@ -128,6 +162,13 @@ C  = yRows(rad+1); % Guess height of f(x). Centre value is a good guess.
   SupResParams(index).res_Row = residueRows;
   SupResParams(index).res_Col = residueCols;
   SupResParams(index).Sum_signal = sum(yCols); % Sum of signal (counts) for this fit
+ if FlagState==2
+     SupResParams(index).Sum_signal = sum(yCols)-7*D; % Sum of signal (counts) for this fit
+ else
+    SupResParams(index).Sum_signal = sum(yCols); % Sum of signal (counts) for this fit
+  end  
+  % Print D
+  %D
   
   index=index+1;
  else 
