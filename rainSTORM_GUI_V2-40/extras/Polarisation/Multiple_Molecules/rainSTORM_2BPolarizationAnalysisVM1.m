@@ -32,7 +32,7 @@ LocRad = 1;
 
 % Maximim distance any localisation can be from a temporary molecule
 % location to be associated with that molecule.
-LocRange = 2;
+LocRange = 1;
 
 if sum(Flagsetzero+Flagsetbackground+Flagbackgroundsubtraction+FlagrefitMin+FlagrefitAverage) > 1
     error('Make sure there is only one active flag!')
@@ -79,24 +79,25 @@ YPath = params.rawdata_mgr.filename;
 
 % 2.Quality control: This creates a density map for the frame and 
 frameSize = params.rawdata_mgr.myImInfo.frame_size (1);
-CountMap = zeros (frameSize);
+CountMapX = zeros (frameSize);
+
 NxCorrect = [Nxarray(:,1) Nxarray(:,2) Nxarray(:,3) Nxarray(:,12) -1*ones(size(Nxarray,1),2)];
 
 for countNarr = 1 : size (Nxarray, 1)
     xtemp = floor(Nxarray(countNarr, 3)); 
     ytemp = floor(Nxarray(countNarr, 2));
     % All of the localisation positions are rounded down. 
-    CountMap (xtemp, ytemp) = CountMap (xtemp, ytemp) +1; 
+    CountMapX (xtemp, ytemp) = CountMapX (xtemp, ytemp) +1; 
     % Creating the number of counts per pixel in the image to create a
     % density map later. 
 end
     
 %To remove most of the background noise. 
-CountMap = CountMap  - noiseThresh;
-CountMap(CountMap<0) = 0;
+CountMapX = CountMapX  - noiseThresh;
+CountMapX(CountMapX<0) = 0;
 
 % Determine preliminary locations of fluorophores, using avNMWS
-PrelimLoc = rainSTORM_avNMS(CountMap,LocRad);
+PrelimLoc = rainSTORM_avNMS(CountMapX,LocRad);
 
 %Now look for localisations within 2 pixels of the preliminary locations
 %(5x5 grid) to find the real average of the localisations. Then assign
@@ -114,6 +115,41 @@ end
 
 NxCorrect(NxCorrect(:, 5) == -1, :) = [];
 
+% Idem for Y-stack
+CountMapY = zeros (frameSize);
+NyCorrect = [Nyarray(:,1) Nyarray(:,2) Nyarray(:,3) Nyarray(:,12) -1*ones(size(Nyarray,1),2)];
+
+for countNarr = 1 : size (Nyarray, 1)
+    xtemp = floor(Nyarray(countNarr, 3)); 
+    ytemp = floor(Nyarray(countNarr, 2));
+    % All of the localisation positions are rounded down. 
+    CountMapY (xtemp, ytemp) = CountMapY (xtemp, ytemp) +1; 
+    % Creating the number of counts per pixel in the image to create a
+    % density map later. 
+end
+    
+%To remove most of the background noise. 
+CountMapY = CountMapY  - noiseThresh;
+CountMapY(CountMapY<0) = 0;
+
+% Determine preliminary locations of fluorophores, using avNMWS
+PrelimLoc = rainSTORM_avNMS(CountMapY,LocRad);
+
+%Now look for localisations within 2 pixels of the preliminary locations
+%(5x5 grid) to find the real average of the localisations. Then assign
+%localisations to the corresponding molecule
+
+for LocCount = 1:size(PrelimLoc,1);
+    for ArrayCount = 1:size(Nyarray,1);
+        Locdistance = sqrt((Nyarray(ArrayCount,3)-PrelimLoc(LocCount,1))^2+(Nyarray(ArrayCount,2)-PrelimLoc(LocCount,2))^2);
+        if Locdistance < LocRange
+         NyCorrect(ArrayCount,5) = PrelimLoc(LocCount,2);
+         NyCorrect(ArrayCount,6) = PrelimLoc(LocCount,1);
+        end
+    end
+end
+
+NyCorrect(NyCorrect(:, 5) == -1, :) = [];
 
 
 % 2. Identify matching images
@@ -126,18 +162,84 @@ NxCorrect(NxCorrect(:, 5) == -1, :) = [];
 
 
 
-NxarrayCorrect = Nxarray;
-NxDistance     = sqrt( (Nxarray(:,2)-32).^2 + (Nxarray(:,3)-30).^2 );
-Nxreject = NxarrayCorrect(NxDistance > 1, :);
-NxarrayCorrect(NxDistance > 1, :) = [];
-
-%Idem for Nyarray
-NyarrayCorrect = Nyarray;
-NyDistance     = sqrt( (Nyarray(:,2)-32).^2 + (Nyarray(:,3)-30).^2 );
-Nyreject = NyarrayCorrect(NyDistance > 1, :);
-NyarrayCorrect(NyDistance > 1, :) = [];
-
 numberOfFrames = params.localization.results.numberOfFrames;
+ComCount = []; 
+
+for count = 1 : numberOfFrames
+        dumx = NxCorrect(find (NxCorrect(: , 1) == count),:);
+        dumy = NyCorrect(find (NyCorrect(: , 1) == count),:);
+        if (~isempty(dumx) && ~isempty(dumy)) 
+            dumx(:,[5,6,7]) = zeros(size(dumx,1),3);
+            dumy(:,[5,6]) = [];
+            for countX = 1:size(dumx,1);
+                for countY = 1:size(dumy,1)
+                    DistanceXY = sqrt((dumx(countX,2)-dumy(countY,2))^2+(dumx(countX,3)-dumy(countY,3))^2);
+                    if DistanceXY <= LocRange;
+                        dumx(countX, [5,6,7] ) = dumy(countY, [2, 3, 4]); 
+                        dumy(countY,1) = -1;
+                    end;
+                end;
+            end;
+            dumy(dumy(:, 1) == -1, :) = [];
+            dumy = [dumy(:,1) zeros(size(dumy,1),3) dumy(:,[2,3,4])];
+            dumx = cat(1, dumx, dumy);
+            if isempty(ComCount) 
+                ComCount = dumx;
+            else 
+                ComCount = cat (1, ComCount, dumx); 
+            end;
+        elseif isempty(dumy)
+            dumx(:,[5,6,7]) = zeros(size(dumx,1),3);
+            if isempty(ComCount) 
+                ComCount = dumx;
+            else 
+                ComCount = cat (1, ComCount, dumx); 
+            end;
+        elseif isempty(dumy)
+            dumy = [dumy(:,1) zeros(size(dumy,1),3) dumy(:,[2,3,4])];
+            if isempty(ComCount) 
+                ComCount = dumy;
+            else 
+                ComCount = cat (1, ComCount, dumy); 
+            end;
+        end;
+end;
+
+'Daan rules!'
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 %Initiate matrix to hold combined count list
 % ComCount will hold the combined count list.
