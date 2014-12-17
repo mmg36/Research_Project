@@ -4,7 +4,7 @@ rng('shuffle')               % Start a random number sequence (see 'rng')
 % 1. Initialise simulation parameters
 
 % Instrument Properties
-numberOfImages       = 1000;    % How many frames of data to simulate?
+
 simSig2D             = 160;    % Define 2D PSF, by std dev of 2D circ Gaus
 
 flagGaussianNoise    = 1;    % Add Gaussian "camera noise" to ccdSignal
@@ -88,7 +88,7 @@ colormap(gray)
 tic % Start timing how long it takes to simulate a stack of images
 for lpIm = 1:numberOfImages    
   
-  dyeChance   = rand(size(dyeObPosRow));  % Random number for each dye
+  dyeChance   = dyeRand(:,lpIm);  % Random number for each dye
  % Determines which fluoresce
   if(flagTimeCorrBlinks)
       dyeActive = ( (dyeChance < dyeFraction) | ...

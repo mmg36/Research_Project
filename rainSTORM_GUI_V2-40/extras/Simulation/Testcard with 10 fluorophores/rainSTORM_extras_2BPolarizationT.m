@@ -51,6 +51,7 @@ flagTwoMol           = 0;    % Alternative. Simulation of 2 molecules
 flagMultiMol         = 0;    % Alternative. Simulation of many molecules
 flagMultiMolBrowDis  = 0;    % Alternative. Multi mols, distinct D's
 flagTimeCorrBlinks   = 0;    % Alternative. See below for details. 
+numberOfImages       = 1000;    % How many frames of data to simulate?
 
 % Purely in-loop simulation conditions
 flagBrownianConst    = 0;    % Molecule(s) move with Brownian diffusion
@@ -89,6 +90,11 @@ dyePhotonsY = (sin(phiAngle.*pi/180)).^2;
 % [Number, Xpos, Ypos, photonfracX, photonfracY]
 SimDatax = [posVec dyePhotonsX];
 SimDatay = [posVec dyePhotonsY];
+
+%3. Generate random number matrix to determine which fluorophores are
+%active in each frame.
+dyeRand = rand(size(SimDatax,1),numberOfImages);
+
 % 4. Call a second script to do the rest of image processing
 % Analysing images with polarised light in the X-direction
 SimData = SimDatax;
