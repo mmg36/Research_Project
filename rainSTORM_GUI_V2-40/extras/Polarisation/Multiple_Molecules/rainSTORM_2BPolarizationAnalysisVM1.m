@@ -42,7 +42,9 @@ end
 startup  % Run rainSTORM once (manually), on the X-polarisation data
 uiwait 
 
-% Read in as an array!
+% Read in as an array! Converting the data in the struct to an array which
+% can be handled easily later. 
+
 Nxtable = struct2table((params.localization.results.SupResParams));
 
 for count = 1:size(Nxtable,2)
@@ -77,79 +79,19 @@ YPath = params.rawdata_mgr.filename;
 
 % 2.Quality control: This creates a density map for the frame and 
 frameSize = params.rawdata_mgr.myImInfo.frame_size (1);
+
+% Create an array and store information about all of the counts that passed
+% as a signal (not noise). 
+% The structure of the Array is as follows: 
+% Frame ID | X location | Y location | Photon counts | Two other coulumns
+% which will be filled with Phi and Polarisation values later. 
+NxCorrect = [Nxarray(:,1) Nxarray(:,2) Nxarray(:,3) Nxarray(:,12) -1*ones(size(Nxarray,1),2)];
 CountMapX = zeros (frameSize);
 
-NxCorrect = [Nxarray(:,1) Nxarray(:,2) Nxarray(:,3) Nxarray(:,12) -1*ones(size(Nxarray,1),2)];
-
-for countNarr = 1 : size (Nxarray, 1)
-    xtemp = floor(Nxarray(countNarr, 3)); 
-    ytemp = floor(Nxarray(countNarr, 2));
-    % All of the localisation positions are rounded down. 
-    CountMapX (xtemp, ytemp) = CountMapX (xtemp, ytemp) +1; 
-    % Creating the number of counts per pixel in the image to create a
-    % density map later. 
-end
-    
-%To remove most of the background noise. 
-CountMapX = CountMapX  - noiseThresh;
-CountMapX(CountMapX<0) = 0;
-
-% Determine preliminary locations of fluorophores, using avNMWS
-PrelimLoc = rainSTORM_avNMS(CountMapX,LocRad);
-
-%Now look for localisations within 2 pixels of the preliminary locations
-%(5x5 grid) to find the real average of the localisations. Then assign
-%localisations to the corresponding molecule
-
-for LocCount = 1:size(PrelimLoc,1);
-    for ArrayCount = 1:size(Nxarray,1);
-        Locdistance = sqrt((Nxarray(ArrayCount,3)-PrelimLoc(LocCount,1))^2+(Nxarray(ArrayCount,2)-PrelimLoc(LocCount,2))^2);
-        if Locdistance < LocRange
-         NxCorrect(ArrayCount,5) = PrelimLoc(LocCount,2);
-         NxCorrect(ArrayCount,6) = PrelimLoc(LocCount,1);
-        end
-    end
-end
-
-NxCorrect(NxCorrect(:, 5) == -1, :) = [];
-
-% Idem for Y-stack
-CountMapY = zeros (frameSize);
 NyCorrect = [Nyarray(:,1) Nyarray(:,2) Nyarray(:,3) Nyarray(:,12) -1*ones(size(Nyarray,1),2)];
+CountMapY = zeros (frameSize);
 
-for countNarr = 1 : size (Nyarray, 1)
-    xtemp = floor(Nyarray(countNarr, 3)); 
-    ytemp = floor(Nyarray(countNarr, 2));
-    % All of the localisation positions are rounded down. 
-    CountMapY (xtemp, ytemp) = CountMapY (xtemp, ytemp) +1; 
-    % Creating the number of counts per pixel in the image to create a
-    % density map later. 
-end
-    
-%To remove most of the background noise. 
-CountMapY = CountMapY  - noiseThresh;
-CountMapY(CountMapY<0) = 0;
-
-% Determine preliminary locations of fluorophores, using avNMWS
-PrelimLoc = rainSTORM_avNMS(CountMapY,LocRad);
-
-%Now look for localisations within 2 pixels of the preliminary locations
-%(5x5 grid) to find the real average of the localisations. Then assign
-%localisations to the corresponding molecule
-
-for LocCount = 1:size(PrelimLoc,1);
-    for ArrayCount = 1:size(Nyarray,1);
-        Locdistance = sqrt((Nyarray(ArrayCount,3)-PrelimLoc(LocCount,1))^2+(Nyarray(ArrayCount,2)-PrelimLoc(LocCount,2))^2);
-        if Locdistance < LocRange
-         NyCorrect(ArrayCount,5) = PrelimLoc(LocCount,2);
-         NyCorrect(ArrayCount,6) = PrelimLoc(LocCount,1);
-        end
-    end
-end
-
-NyCorrect(NyCorrect(:, 5) == -1, :) = [];
-
-
+[CountMapX, CountMapY, NxCorrect, NyCorrect] = rainSTORM_noiseCancelling(Nxarray, Nyarray, NxCorrect, NyCorrect, CountMapX, CountMapY, noiseThresh, LocRad, LocRange);
 % 2. Identify matching images
 
 
@@ -168,6 +110,8 @@ for count = 1 : numberOfFrames
         dumx = NxCorrect(find (NxCorrect(: , 1) == count),:);
         dumy = NyCorrect(find (NyCorrect(: , 1) == count),:);
         if (~isempty(dumx) && ~isempty(dumy)) 
+            % If both are full then match the datapoints based on their
+            % locations 
             dumx(:,[5,6,7]) = zeros(size(dumx,1),3);
             dumy(:,[5,6]) = [];
             for countX = 1:size(dumx,1);
@@ -188,13 +132,17 @@ for count = 1 : numberOfFrames
                 ComCount = cat (1, ComCount, dumx); 
             end;
         elseif isempty(dumy)
+               % If y localisations are empty then copy the x value into
+               % them 
             dumx(:,[5,6,7]) = zeros(size(dumx,1),3);
             if isempty(ComCount) 
                 ComCount = dumx;
             else 
                 ComCount = cat (1, ComCount, dumx); 
             end;
-        elseif isempty(dumy)
+        elseif isempty(dumx)
+             % If x localisations are empty then copy the x value into
+               % them 
             dumy = [dumy(:,1) zeros(size(dumy,1),3) dumy(:,[2,3,4])];
             if isempty(ComCount) 
                 ComCount = dumy;
@@ -305,6 +253,7 @@ end
 
 PMap = PMap ./ NMap;
 PMap = PMap';
+NMap = NMap';
 StdevMap = sqrt((P2Map - (NMap.*(PMap.^2)))./ (NMap -1));
 StdevMap = StdevMap';
 
