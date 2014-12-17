@@ -12,6 +12,10 @@ persistent Nfails
 % fitting (fitting DC term to Gaussian)
 FlagState= 1;
 
+% To allow negative numbers for the background corrected counts, this
+% variable was changed to a double. 
+
+myFrame = double(myFrame);
 
 % Fit [x0,C,sigX] to make f(x)=C*exp( -(x-x0)^2/(2*sigX^2) ) 
 % Work on rows then cols. Reject fits with far-out x0, sigX, or residual.
@@ -43,7 +47,7 @@ if FlagState == 1;
    end;
    
    ResBackground = SumBackground / area;
-   ResBackground 
+  % ResBackground; 
    % 'new method'
 end            
 

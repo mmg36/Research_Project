@@ -59,7 +59,7 @@ flagBrownianConst    = 0;    % Molecule(s) move with Brownian diffusion
 phiAngle             = [0:5:45]';  % in degrees
 
 % Positions of fluorophores [Number, PosX,PosY]
-posVec               = [1 10 10; 2 10 30; 3 10 50; 4 20 50; 5 40 10; 6 35 30; 7 40 30; 8 45 30; 9 30 50; 10 50 50];
+posVec               = [1 10 10; 2 30 10; 3 50 10; 4 50 20; 5 10 40; 6 30 35; 7 30 40; 8 30 45; 9 50 30; 10 50 50];
 
 % 3D options
 flag2D               = 1;    % True: all z-positions are zero
@@ -101,5 +101,3 @@ SimData = SimDatay;
 writeFile = writeFileY;
 % A second script which generates the images is called here
 rainSTORM_extras_2BSimV3T;
-
-'code finished'

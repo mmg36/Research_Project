@@ -144,7 +144,7 @@ for lpIm = 1:numberOfImages
       % Allocate signal photons to each pixel in proportion to psf fraction
       totalPsfSignal = sum(thisDyeSignal(:));
       thisDyeSignal = thisDyeSignal./totalPsfSignal; % Normalise
-      thisDyeSignal = thisDyeSignal*dyePhotons*SimData(dyeIndexes(loopDyes));      % Photons in ccd pixels
+      thisDyeSignal = thisDyeSignal*dyePhotons*SimData(dyeIndexes(loopDyes),4);      % Photons in ccd pixels
  
       thisDyeSignal = floor(thisDyeSignal);
       
