@@ -222,18 +222,7 @@ end
 end
 
 % Method 2: Assume missing observations are background count level
-if(Flagsetbackground == 1);
-for count = 1:size(ComCount,1);
-    if ComCount(count, 4) == 0
-        ComCount (count , 4) = ResBackground;
-         ComCount (count , [2,3]) = ComCount (count , [5,6]);
-    end
-    if ComCount(count,7) == 0
-        ComCount(count,7) = ResBackground;
-        ComCount (count , [5,6]) = ComCount (count , [2,3]);
-    end
-end
-end
+%Legacy 
 
 % Method 3. Subtract average residual background level from measured
 %accepted intensities and put missing observations to 0
@@ -255,11 +244,15 @@ end
 % (d) Use sum of ROI as missing observation
 if FlagrefitAverage == 1
     for count = 1:size(ComCount, 1)
+        BGN = mean([params.localization.results.SupResParams.noiseBGN]);
         if ComCount(count, 4) == 0 
                myFrame = double(imread([XPath,'.tif'], ComCount(count, 1)));
                ComCount(count, [2,3]) = ComCount(count, [5,6]);
-               myROI= myFrame(ceil(ComCount(count,2))-3:ceil(ComCount(count,2))+3,ceil(ComCount(count,3))-3:ceil(ComCount(count,3))+3);
+               myROI= myFrame(ceil(ComCount(count,2))-3:ceil(ComCount(count,2))+3,ceil(ComCount(count,3))-3:ceil(ComCount(count,3))+3) - BGN;
                sum_signal = sum(myROI(:));
+             %  if sum_signal < 0 
+             %      sum_signal = 0;
+             %  end;
                % Then pass sum_signal this into the relevant place (ComCount(number, X=2, Y=3) )
                ComCount(count, 4) = sum_signal; 
                
@@ -267,9 +260,12 @@ if FlagrefitAverage == 1
         if ComCount(count, 7) == 0 
              myFrame = double(imread([YPath,'.tif'], ComCount(count, 1)));
              ComCount(count, [5,6]) = ComCount(count, [2, 3]);
-             myROI= myFrame(ceil(ComCount(count,2))-3:ceil(ComCount(count,2))+3,ceil(ComCount(count,3))-3:ceil(ComCount(count,3))+3);
+             myROI= myFrame(ceil(ComCount(count,2))-3:ceil(ComCount(count,2))+3,ceil(ComCount(count,3))-3:ceil(ComCount(count,3))+3) - BGN;
              sum_signal = sum(myROI(:));
              % Then pass sum_signal this into the relevant place (ComCount(number, X=2, Y=3) )
+            % if sum_signal < 0 
+            %       sum_signal = 0;
+           %  end;
              ComCount(count, 7) = sum_signal; 
                 
         end
@@ -284,6 +280,30 @@ ComCount(:,8) = (180/pi)*acot(sqrt(abs(ComCount(:,4)./ComCount(:,7)))).*sign((Co
 
 
 %5. Conclusions
+ComCountAv = ComCount;
+ComCountAv (:,2) = 0.5*(ComCountAv(:,2)+ComCountAv(:,5));
+ComCountAv (:,3) = 0.5*(ComCountAv(:,3)+ComCountAv(:,6));
+ComCountAv(:, [5,6]) = [];
+CeilComCount  = [ ComCountAv(:,1)  ceil(ComCountAv(:,[2,3])) ComCountAv(:,[4,5,6])] ;
+CountMapPhi = zeros (frameSize);
+PhiMap = nan (frameSize);
+StdevMap = nan (frameSize);
+for countRow = 1 : frameSize
+    for countCol = 1 : frameSize
+        for MapCount = 1 : size (CeilComCount, 1) 
+            dumPhi =[];
+            if (CeilComCount(MapCount, 2) == countRow && CeilComCount(MapCount, 3) == countCol)
+               dumPhi= cat(1,CeilComCount(MapCount, 6),dumPhi); 
+               CountMapPhi(countRow, countCol) = CountMapPhi(countRow, countCol)+1;
+            end
+            
+            PhiMap(countRow, countCol) = mean(dumPhi);
+            StdevMap(countRow, countCol) = std(dumPhi);
+        end
+    end
+end
+
+
 % Results is a vector with the avergae estimated angle and the standard
 % deviation of the phi column (not error of the mean). 
 

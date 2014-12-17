@@ -47,6 +47,8 @@ if FlagState == 1;
    end;
    
    ResBackground = SumBackground / area;
+   
+ %  params.noise.BGN = ResBackground;
   % ResBackground; 
    % 'new method'
 end            
@@ -203,7 +205,7 @@ C  = yRows(rad+1); % Guess height of f(x). Centre value is a good guess.
 %  end  
   % Print D
   %D
-  
+  SupResParams(index).noiseBGN = ResBackground;
   index=index+1;
  else 
   Nfails = Nfails+1;
