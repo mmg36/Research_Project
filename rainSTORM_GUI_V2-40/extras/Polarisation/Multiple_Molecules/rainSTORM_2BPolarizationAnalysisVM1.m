@@ -1,4 +1,4 @@
-%rainSTORM_2BPolarizationAnalysis
+ %rainSTORM_2BPolarizationAnalysis
 %This script uses the main RainSTORM Software to analyse 2 stacks of x-y
 %polarized images
 
@@ -276,33 +276,37 @@ end
 % Take negative angle if corrected counts are negative
 
 ComCount(:,8) = (180/pi)*acot(sqrt(abs(ComCount(:,4)./ComCount(:,7)))).*sign((ComCount(:,4)./ComCount(:,7)));
-
+ComCount(:,9) = (ComCount(:,4)-ComCount(:,7)) ./ (ComCount(:,4)+ComCount(:,7));
 
 
 %5. Conclusions
 ComCountAv = ComCount;
-ComCountAv (:,2) = 0.5*(ComCountAv(:,2)+ComCountAv(:,5));
-ComCountAv (:,3) = 0.5*(ComCountAv(:,3)+ComCountAv(:,6));
-ComCountAv(:, [5,6]) = [];
-CeilComCount  = [ ComCountAv(:,1)  ceil(ComCountAv(:,[2,3])) ComCountAv(:,[4,5,6])] ;
-CountMapPhi = zeros (frameSize);
-PhiMap = nan (frameSize);
-StdevMap = nan (frameSize);
-for countRow = 1 : frameSize
-    for countCol = 1 : frameSize
-        for MapCount = 1 : size (CeilComCount, 1) 
-            dumPhi =[];
-            if (CeilComCount(MapCount, 2) == countRow && CeilComCount(MapCount, 3) == countCol)
-               dumPhi= cat(1,CeilComCount(MapCount, 6),dumPhi); 
-               CountMapPhi(countRow, countCol) = CountMapPhi(countRow, countCol)+1;
-            end
-            
-            PhiMap(countRow, countCol) = mean(dumPhi);
-            StdevMap(countRow, countCol) = std(dumPhi);
-        end
-    end
+if max(ComCountAv(:,4), ComCountAv(:,7)) == ComCountAv(:,7);
+     ComCountAv (:,[2,3])= ComCountAv (:,[5,6]);
+end
+  ComCountAv (:,[5,6])= [];
+% Find the brighter one and choose that.
+
+CeilComCount  = [ ComCountAv(:,1)  ceil(ComCountAv(:,[2,3])) ComCountAv(:,[4,5,6,7])] ;
+% Map holding counts
+NMap = zeros (frameSize);
+% Map holding polarisation sum
+PMap = zeros (frameSize);
+% Map holding sum of polarisations squared
+P2Map = zeros (frameSize);
+% Map holding summed intensities
+IMap = zeros(frameSize);
+for Count = 1 : size (CeilComCount, 1) 
+    NMap(CeilComCount(Count,2), CeilComCount(Count,3)) = NMap(CeilComCount(Count,2), CeilComCount(Count,3))+1;
+    PMap(CeilComCount(Count,2), CeilComCount(Count,3)) = PMap(CeilComCount(Count,2), CeilComCount(Count,3)) + (CeilComCount(Count,7));
+    P2Map(CeilComCount(Count,2), CeilComCount(Count,3)) = P2Map(CeilComCount(Count,2), CeilComCount(Count,3))+ (CeilComCount(Count,7).^2);
+    IMap(CeilComCount(Count,2), CeilComCount(Count,3)) = IMap(CeilComCount(Count,2), CeilComCount(Count,3)) + CeilComCount(Count,4)+CeilComCount(Count,5);
 end
 
+PMap = PMap ./ NMap;
+PMap = PMap';
+StdevMap = sqrt((P2Map - (NMap.*(PMap.^2)))./ (NMap -1));
+StdevMap = StdevMap';
 
 % Results is a vector with the avergae estimated angle and the standard
 % deviation of the phi column (not error of the mean). 
