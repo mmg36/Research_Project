@@ -1,0 +1,10 @@
+filename = "c:\Users\Pongracz\Desktop\test_image.tif"
+algorithm = 1
+pixelWidth = 160
+initSig = 1.3
+rad = 3
+tol = 0.2
+thresh = 0
+maxits = 6
+scalebar = 0
+sumimage = 0
